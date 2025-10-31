@@ -1,0 +1,16 @@
+openai
+torch
+PyPDF2
+openai
+pyyaml
+beautifulsoup4
+lxml
+python-dotenv
+chromadb
+streamlit
+Flask
+flask-cors
+
+
+
+

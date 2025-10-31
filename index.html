@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot RAG</title>
+    <style>
+        /* ... (Todo tu CSS de chatbot no cambia) ... */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 95vh;
+        }
+        .container {
+            max-width: 700px;
+            width: 100%;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        header {
+            background-color: #007bff;
+            color: white;
+            padding: 16px 20px;
+            border-bottom: 1px solid #ddd;
+            text-align: center;
+        }
+        header h1 { margin: 0; font-size: 1.5em; }
+        .config-area {
+            display: flex;
+            justify-content: space-around;
+            gap: 10px;
+            padding: 12px 20px;
+            background: #f9f9f9;
+            border-bottom: 1px solid #eee;
+        }
+        .config-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex-grow: 1;
+        }
+        .config-item label { font-weight: 600; font-size: 0.85em; color: #555; }
+        .config-item input,
+        .config-item select { padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9em; }
+        #chat-window {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            max-height: 60vh;
+            min-height: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .message { display: flex; flex-direction: column; }
+        .message p {
+            max-width: 80%;
+            padding: 10px 15px;
+            border-radius: 18px;
+            margin: 0;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .bot-message p {
+            background-color: #e9e9eb;
+            color: #333;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+        .user-message p {
+            background-color: #007bff;
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+        .system-message p {
+            align-self: center;
+            font-style: italic;
+            color: #777;
+            background: transparent;
+            font-size: 0.9em;
+        }
+        .error-message p {
+            align-self: flex-start;
+            background: #ffebee;
+            color: #c00;
+            border: 1px solid #fbc2c2;
+        }
+        #chat-form { display: flex; padding: 15px; gap: 10px; }
+        #prompt {
+            flex-grow: 1;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 20px;
+            font-size: 1em;
+        }
+        #chat-form button {
+            padding: 12px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+        }
+        #chat-form button:hover { background-color: #0056b3; }
+        #context-toggle { padding: 10px 20px; background: #f9f9f9; border-top: 1px solid #eee; }
+        #context-toggle summary { cursor: pointer; font-weight: 600; color: #555; }
+        #context-display {
+            margin-top: 10px;
+            background: #eee;
+            padding: 10px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.85em;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Chatbot RAG</h1>
+        </header>
+        <div class="config-area">
+            <div class="config-item">
+                <label for="vault_file">Selecciona una UEA:</label>
+                <select id="vault_file" name="vault_file" required>
+                <option value="" disabled selected>Cargando UEAs...</option>
+                </select>
+            </div>
+            <div class="config-item">
+                <label for="model_choice">Modelo:</label>
+                <select id="model_choice">
+                    <option value="Ollama">Ollama</option>
+                    <option value="OpenAI">OpenAI</option>
+                </select>
+            </div>
+        </div>
+        <div id="chat-window">
+            <div class="message bot-message">
+                <p>Hola 👋. Soy un asistente RAG. ¿En qué puedo ayudarte hoy?</p>
+            </div>
+        </div>
+        <form id="chat-form">
+            <input type="text" id="prompt" placeholder="Escribe tu consulta..." autocomplete="off" required>
+            <button type="submit">Enviar</button>
+        </form>
+        <details id="context-toggle">
+            <summary>Ver Último Contexto Utilizado</summary>
+            <pre id="context-display">El contexto de la última respuesta aparecerá aquí.</pre>
+        </details>
+    </div>
+
+    <script>
+        // --- INICIO DE LA CORRECCIÓN ---
+        // Espera a que el HTML esté cargado antes de ejecutar el script
+        document.addEventListener('DOMContentLoaded', () => {
+
+            const chatWindow = document.getElementById('chat-window');
+            const chatForm = document.getElementById('chat-form'); // Ahora sí se encontrará
+            const promptInput = document.getElementById('prompt');
+            const contextDisplay = document.getElementById('context-display');
+            
+            // --- CAMBIO: Variable para guardar el historial ---
+            // Formato: [ {role: "user", content: "..."}, {role: "assistant", content: "..."} ]
+            let chatHistory = [];
+            // -------------------------------------------------
+
+            // Función para añadir mensajes al chat
+            function appendMessage(message, sender, type = 'normal') {
+                const messageDiv = document.createElement('div');
+                messageDiv.classList.add('message', `${sender}-message`);
+                
+                if (type === 'error') {
+                    messageDiv.classList.add('error-message');
+                } else if (type === 'system') {
+                    messageDiv.classList.add('system-message');
+                }
+
+                const p = document.createElement('p');
+                p.textContent = message;
+                messageDiv.appendChild(p);
+                
+                chatWindow.appendChild(messageDiv);
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+                
+                // --- CAMBIO: Guardar en el historial (excepto errores o mensajes de sistema) ---
+                if (sender === 'user' && type === 'normal') {
+                    chatHistory.push({ role: 'user', content: message });
+                } else if (sender === 'bot' && type === 'normal') {
+                    chatHistory.push({ role: 'assistant', content: message });
+                }
+                // ----------------------------------------------------------------------
+                
+                return messageDiv;
+            }
+
+            // Manejador del envío del formulario
+            chatForm.addEventListener('submit', async function(event) {
+                event.preventDefault(); // Esta línea ahora sí evitará el refresco
+                
+                const prompt = promptInput.value.trim();
+                if (!prompt) return; 
+
+                const vault_file = document.getElementById('vault_file').value;
+                const model_choice = document.getElementById('model_choice').value;
+
+                // Mostrar mensaje de usuario (y guardarlo en el historial)
+                appendMessage(prompt, 'user');
+                promptInput.value = ''; 
+
+                const loadingMessage = appendMessage("El asistente está escribiendo...", 'bot', 'system');
+
+                const url = 'http://148.206.83.66:1080/consulta';
+
+                // --- CAMBIO: Petición de GET a POST ---
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',  // <-- CAMBIO
+                        headers: {
+                            'Content-Type': 'application/json', // <-- CAMBIO
+                        },
+                        body: JSON.stringify({ // <-- CAMBIO
+                            prompt: prompt,
+                            vault_file: vault_file,
+                            model_choice: model_choice,
+                            history: chatHistory // <-- CAMBIO: Enviar el historial
+                        })
+                    });
+                    // --------------------------------------
+
+                    const data = await response.json();
+                    loadingMessage.remove();
+
+                    if (!response.ok) {
+                        throw new Error(data.error || `Error ${response.status}`);
+                    }
+
+                    // Mostrar respuesta del bot (y guardarla en el historial)
+                    appendMessage(data.answer, 'bot');
+                    
+                    contextDisplay.textContent = data.context || "No se utilizó contexto.";
+
+                } catch (error) {
+                    loadingMessage.remove();
+                    appendMessage(`Error: ${error.message}`, 'bot', 'error');
+                }
+            });
+
+        // --- FIN DE LA CORRECCIÓN ---
+        });
+    </script>
+    <script>
+        // Espera a que todo el HTML esté cargado para empezar
+        document.addEventListener('DOMContentLoaded', () => {
+          
+          const selectElement = document.getElementById('vault_file');
+          const url = 'http://148.206.83.66:1080/archivos'; // La URL de donde vienes los datos
+        
+          fetch(url)
+            .then(response => {
+              if (!response.ok) {
+                throw new Error('No se pudo conectar al servidor de archivos.');
+              }
+              return response.json(); 
+            })
+            .then(filenames => {
+              selectElement.innerHTML = '<option value="" disabled selected>Selecciona un archivo...</option>';
+        
+              filenames.forEach(originalValue => {
+        
+                const option = document.createElement('option');
+        
+                option.value = originalValue;
+                
+                let displayText = originalValue;
+                displayText = displayText.replace(/\.txt$/, '').replace(/_/g, ' '); 
+                
+                option.textContent = displayText;
+                selectElement.appendChild(option);
+              });
+            })
+            .catch(error => {
+              console.error('Error al cargar archivos:', error);
+              selectElement.innerHTML = '<option value="" disabled>Error al cargar</option>';
+            });
+        
+        });
+    </script>
+    </body>
+</html>

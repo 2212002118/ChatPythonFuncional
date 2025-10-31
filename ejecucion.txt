@@ -1,0 +1,23 @@
+#procesar_archivos.py
+python procesar_archivos.py ./NOMBRE_CARPETA_ARCHIVOS nombreColeccion
+
+#chatgpt
+
+Colocar en variable del sistema en terminal OPENAI_API_KEY
+CMD: set OPENAI_API_KEY=
+MOBAXTERM: OPENAI_API_KEY=
+Despues:
+chatgpt.py nombreColeccion.txt
+
+#ollama
+ollama.py nombreColeccion.txt
+
+#streamlit
+python -m streamlit run app.py
+
+#Para ejecutar el chatbot es necesario ejecutar primero el servidor Flask con:
+python3 serverAPI.py
+
+
+#Luego ejecutar el servidor http.server con:
+python3 -m http.server 9000 #el servidor es opcional
